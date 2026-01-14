@@ -11,7 +11,6 @@ on:
     paths:
       - 'data/**'
       - 'chizinski_cv.qmd'
-      - 'chizinski_cv.Rmd'
       - 'R/**'
       - 'bib/**'
       - '.github/workflows/build-cv.yml'
