@@ -47,3 +47,26 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# macOS
+.DS_Store
+
+# LaTeX temporary files
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+
+# Quarto cache
+.quarto/
+_freeze/
+
+# Logs
+logs/
+
+# Claude context (optional - can be useful for tracking)
+# .claude/
+
+# Generated data caches (auto-regenerated)
+data/*.rds

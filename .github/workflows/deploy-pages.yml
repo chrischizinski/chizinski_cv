@@ -1,0 +1,132 @@
+name: Deploy CV to GitHub Pages
+
+on:
+  # Run after successful CV build
+  workflow_run:
+    workflows: ["Build and Deploy CV"]
+    types:
+      - completed
+    branches: [main]
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5.2'
+
+      - name: Setup Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Install R packages
+        run: |
+          install.packages(c(
+            'tidyverse',
+            'vitae',
+            'here',
+            'scholar',
+            'RefManageR',
+            'glue',
+            'epoxy',
+            'icons',
+            'lubridate',
+            'scales'
+          ), repos = 'https://cloud.r-project.org/')
+        shell: Rscript {0}
+
+      - name: Update data
+        run: |
+          Rscript R/pull_citations.R || true
+          Rscript R/pull_presentations.R
+
+      - name: Render HTML CV
+        run: quarto render chizinski_cv.qmd --to html
+
+      - name: Create index page
+        run: |
+          cat > index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Christopher Chizinski - CV</title>
+            <style>
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                max-width: 800px;
+                margin: 80px auto;
+                padding: 20px;
+                line-height: 1.6;
+              }
+              h1 { color: #d00000; margin-bottom: 10px; }
+              .subtitle { color: #666; margin-bottom: 40px; }
+              .links { margin: 30px 0; }
+              .links a {
+                display: inline-block;
+                margin-right: 20px;
+                padding: 10px 20px;
+                background: #d00000;
+                color: white;
+                text-decoration: none;
+                border-radius: 5px;
+              }
+              .links a:hover { background: #a00000; }
+              .info { background: #f5f5f5; padding: 20px; border-radius: 5px; margin: 20px 0; }
+              .timestamp { color: #999; font-size: 0.9em; }
+            </style>
+          </head>
+          <body>
+            <h1>Christopher Chizinski</h1>
+            <div class="subtitle">Associate Professor of Human Dimensions<br>
+            University of Nebraska-Lincoln</div>
+
+            <div class="links">
+              <a href="chizinski_cv.html">View CV (HTML)</a>
+              <a href="chizinski_cv.pdf" download>Download CV (PDF)</a>
+            </div>
+
+            <div class="info">
+              <strong>About this CV</strong><br>
+              This curriculum vitae is automatically generated from structured data and updated monthly.
+              Publications are sourced from Google Scholar, and all data is version-controlled.
+            </div>
+
+            <div class="timestamp">
+              Last updated: $(date +"%B %d, %Y at %H:%M UTC")
+            </div>
+          </body>
+          </html>
+          EOF
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

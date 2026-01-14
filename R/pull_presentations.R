@@ -1,40 +1,6 @@
 require(xfun)
 xfun::pkg_attach2(c("tidyverse", "RefManageR"), message = FALSE)
-source("/Users/cchizinski2/Documents/git/chizinski_cv/R/functions.R")
-
-# contributed presentations clean up -------------------------------------------
-
-# contr_presentations <- read_csv(here::here('data', 'contributed_presentations_fixed.csv'))
-#   
-# contr_presentations |> 
-#   separate_wider_delim(cols = authors, names = c("temp1", "temp2", "temp3"), delim = ",", too_few = "align_start", too_many = "merge" ) |> 
-#   mutate(temp2 = str_trim(temp2),
-#          temp3 = str_trim(temp3),
-#          temp3 = str_remove(temp3, "[.]$"),
-#          temp3 = str_remove(temp3, "and"),
-#          authors = glue::glue("{temp2} {temp1}, {temp3}")) |> 
-#   select(-contains("temp")) |> 
-#   mutate(authors = str_remove(authors, ", NA")) -> temp_csv 
-# temp_csv$authors
-# 
-# write_csv(temp_csv, file = here::here('data', 'contributed_presentations.csv'))
-
-
-# invited presentations clean up -----------------------------------------------
-# invited_presentations <- read_csv(here::here('data', 'invited_presentations_fixed.csv'))
-# 
-# invited_presentations |>
-#   separate_wider_delim(cols = authors, names = c("temp1", "temp2", "temp3"), delim = ",", too_few = "align_start", too_many = "merge" ) |>
-#   mutate(temp2 = str_trim(temp2),
-#          temp3 = str_trim(temp3),
-#          temp3 = str_remove(temp3, "[.]$"),
-#          temp3 = str_remove(temp3, "and"),
-#          authors = glue::glue("{temp2} {temp1}, {temp3}")) |>
-#   select(-contains("temp")) |>
-#   mutate(authors = str_remove(authors, ", NA")) -> temp_csv
-# temp_csv$authors
-# #
-# write_csv(temp_csv, file = here::here('data', 'invited_presentations.csv'))
+source(here::here("R", "functions.R"))
 
 
 # templates for conversion to bib -----------------------------------------
@@ -86,85 +52,113 @@ template <- "@inproceedings{{{key},
   }}"
 
 # convert contributed to bib  --------------------------------------------------
-contr_presentations <- read_csv(here::here('data', 'contributed_presentations.csv'))
-#
-# contr_presentations |>
-#   select(title) |>
-#   mutate() |>
-#   as.data.frame()
 
-contr_presentations |>
-  mutate(authors = str_replace_all(authors, c("," = " and", "  " = " ")),
-         authors = str_remove_all(authors, c("\\."))) |>
-  mutate(key = create_bibtex_key(authors, title, year),
-         meeting = str_glue("{{{meeting}}}, {{{location}}}"),
-         title = case_when(grepl(state_pattern, title,
-                                 ignore.case = TRUE) ~str_replace_all(title, state_replace),
-                           grepl(regional_pattern, title,
-                                 ignore.case = TRUE) ~str_replace_all(title, region_replace),
-                           grepl(species_pattern, title,
-                                 ignore.case = TRUE) ~str_replace_all(title, species_replace),
-                           TRUE ~ title)) |>
-  select(-location) |>
-  rowwise() |>
-  summarise(bibentry = glue::glue(template)) |>
-  ungroup() |>
-  pull(bibentry) |>
-  write_lines(here::here('bib', 'contributed_presentations.bib'))
+# Validate contributed presentations file
+contrib_file <- here::here('data', 'contributed_presentations.csv')
+if (!file.exists(contrib_file)) {
+  stop(sprintf("Contributed presentations file not found: %s", contrib_file))
+}
+
+contr_presentations <- read_csv(contrib_file, show_col_types = FALSE)
+
+# Validate required columns
+required_cols <- c("authors", "title", "year", "meeting", "location")
+missing_cols <- setdiff(required_cols, names(contr_presentations))
+if (length(missing_cols) > 0) {
+  stop(sprintf("Contributed presentations CSV missing required columns: %s",
+               paste(missing_cols, collapse = ", ")))
+}
+
+message(sprintf("Processing %d contributed presentations...", nrow(contr_presentations)))
+
+# Generate full contributed presentations BibTeX using helper function
+lifetime_pres <- convert_presentations_to_bibtex(
+  presentations_df = contr_presentations,
+  output_file = here::here('bib', 'contributed_presentations.bib'),
+  species_pattern = species_pattern,
+  species_replace = species_replace,
+  state_pattern = state_pattern,
+  state_replace = state_replace,
+  regional_pattern = regional_pattern,
+  region_replace = region_replace
+)
 
 
 # reduced contributed presentations ---------------------------------------
-filter_year <- 2020
-contr_presentations <- read_csv(here::here('data', 'contributed_presentations.csv'))
-lifetime_pres <- nrow(contr_presentations)
-contr_presentations |>
-  filter(year >= filter_year) |> 
-  mutate(authors = str_replace_all(authors, c("," = " and", "  " = " ")),
-         authors = str_remove_all(authors, c("\\."))) |>
-  mutate(key = create_bibtex_key(authors, title, year),
-         meeting = str_glue("{{{meeting}}}, {{{location}}}"),
-         title = case_when(grepl(state_pattern, title,
-                                 ignore.case = TRUE) ~str_replace_all(title, state_replace),
-                           grepl(regional_pattern, title,
-                                 ignore.case = TRUE) ~str_replace_all(title, region_replace),
-                           grepl(species_pattern, title,
-                                 ignore.case = TRUE) ~str_replace_all(title, species_replace),
-                           TRUE ~ title)) |>
-  select(-location) |>
-  rowwise() |>
-  summarise(bibentry = glue::glue(template)) |>
-  ungroup() -> reduced_presentation_list
+filter_year <- 2019
 
-reduced_pres <- nrow(reduced_presentation_list)
+# Generate reduced (since 2019) contributed presentations BibTeX using helper function
+reduced_pres <- convert_presentations_to_bibtex(
+  presentations_df = contr_presentations,
+  output_file = here::here('bib', 'reduced_contributed_presentations.bib'),
+  species_pattern = species_pattern,
+  species_replace = species_replace,
+  state_pattern = state_pattern,
+  state_replace = state_replace,
+  regional_pattern = regional_pattern,
+  region_replace = region_replace,
+  filter_year = filter_year
+)
 
-reduced_presentation_list |> 
-  pull(bibentry) |>
-  write_lines(here::here('bib', 'reduced_contributed_presentations.bib'))
-
-presentation_numbers <- glue::glue("{lifetime_pres} lifetime and {reduced_pres} since {filter_year}.")
+presentation_numbers <- glue::glue("{lifetime_pres} lifetime.")
 
 pres_data_out <- tibble(info = 1,
                            results = c(presentation_numbers))
 write_rds(pres_data_out,
           here::here('data', 'presentation_numbers.rds'))
 # convert invited to bib  ------------------------------------------------------
-invited_presentations <- read_csv(here::here('data', 'invited_presentations.csv'))
-# 
-invited_presentations |>
-  mutate(authors = str_replace_all(authors, c("," = " and", "  " = " ")),
-         authors = str_remove_all(authors, c("\\."))) |>
-  mutate(key = create_bibtex_key(authors, title, year),
-         meeting = str_glue("{{{meeting}}}, {{{location}}}"),
-         title = case_when(grepl(state_pattern, title,
-                                 ignore.case = TRUE) ~str_replace_all(title, state_replace),
-                           grepl(regional_pattern, title,
-                                 ignore.case = TRUE) ~str_replace_all(title, region_replace),
-                           grepl(species_pattern, title,
-                                 ignore.case = TRUE) ~str_replace_all(title, species_replace),
-                           TRUE ~ title)) |>
-  select(-location) |>
-  rowwise() |>
-  summarise(bibentry = glue::glue(template)) |>
-  ungroup() |>
-  pull(bibentry) |>
-  write_lines(here::here('bib', 'invited_presentations.bib'))
+
+# Validate invited presentations file
+invited_file <- here::here('data', 'invited_presentations.csv')
+if (!file.exists(invited_file)) {
+  stop(sprintf("Invited presentations file not found: %s", invited_file))
+}
+
+invited_presentations <- read_csv(invited_file, show_col_types = FALSE)
+
+# Validate required columns
+missing_cols_invited <- setdiff(required_cols, names(invited_presentations))
+if (length(missing_cols_invited) > 0) {
+  stop(sprintf("Invited presentations CSV missing required columns: %s",
+               paste(missing_cols_invited, collapse = ", ")))
+}
+
+message(sprintf("Processing %d invited presentations...", nrow(invited_presentations)))
+
+# Generate full invited presentations BibTeX
+convert_presentations_to_bibtex(
+  presentations_df = invited_presentations,
+  output_file = here::here('bib', 'invited_presentations_full.bib'),
+  species_pattern = species_pattern,
+  species_replace = species_replace,
+  state_pattern = state_pattern,
+  state_replace = state_replace,
+  regional_pattern = regional_pattern,
+  region_replace = region_replace
+)
+
+# Generate reduced invited presentations BibTeX
+invited_reduced_count <- convert_presentations_to_bibtex(
+  presentations_df = invited_presentations,
+  output_file = here::here('bib', 'invited_presentations_reduced.bib'),
+  species_pattern = species_pattern,
+  species_replace = species_replace,
+  state_pattern = state_pattern,
+  state_replace = state_replace,
+  regional_pattern = regional_pattern,
+  region_replace = region_replace,
+  filter_year = filter_year
+)
+
+# Calculate invited presentation statistics
+invited_total <- nrow(invited_presentations)
+
+inv_presentation_numbers <- glue::glue("{invited_total} lifetime and {invited_reduced_count} since {filter_year}.")
+
+pres_data_out <- tibble(info = 1,
+                        results = c(inv_presentation_numbers))
+write_rds(pres_data_out,
+          here::here('data', 'inv_presentation_numbers.rds'))
+
+message("✓ Presentation processing complete!")
+

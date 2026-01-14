@@ -1,0 +1,111 @@
+name: Build and Deploy CV
+
+on:
+  # Run monthly on the 1st at 9am UTC
+  schedule:
+    - cron: '0 9 1 * *'
+
+  # Run when data files or CV source changes
+  push:
+    branches: [main]
+    paths:
+      - 'data/**'
+      - 'chizinski_cv.qmd'
+      - 'chizinski_cv.Rmd'
+      - 'R/**'
+      - 'bib/**'
+      - '.github/workflows/build-cv.yml'
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+name: Build CV
+
+jobs:
+  build-cv:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5.2'
+
+      - name: Setup Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: 'release'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            libfontconfig1-dev \
+            libharfbuzz-dev \
+            libfribidi-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libtiff5-dev \
+            libjpeg-dev
+
+      - name: Install R packages
+        run: |
+          install.packages(c(
+            'tidyverse',
+            'vitae',
+            'here',
+            'scholar',
+            'RefManageR',
+            'glue',
+            'epoxy',
+            'icons',
+            'lubridate',
+            'scales'
+          ), repos = 'https://cloud.r-project.org/')
+        shell: Rscript {0}
+
+      - name: Update citation data
+        run: Rscript R/pull_citations.R
+        continue-on-error: true  # Continue even if Scholar fails (will use cache)
+
+      - name: Update presentation data
+        run: Rscript R/pull_presentations.R
+
+      - name: Render CV (PDF)
+        run: quarto render chizinski_cv.qmd --to pdf
+
+      - name: Render CV (HTML)
+        run: quarto render chizinski_cv.qmd --to html
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cv-pdf-${{ github.run_number }}
+          path: chizinski_cv.pdf
+          retention-days: 90
+
+      - name: Upload HTML artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cv-html
+          path: chizinski_cv.html
+
+      - name: Create timestamped copy
+        run: |
+          cp chizinski_cv.pdf "chizinski_cv_$(date +%Y-%m-%d).pdf"
+
+      - name: Upload to releases (if tagged)
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            chizinski_cv.pdf
+            chizinski_cv.html
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
