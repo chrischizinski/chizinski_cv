@@ -19,8 +19,6 @@ on:
   # Allow manual trigger
   workflow_dispatch:
 
-name: Build CV
-
 jobs:
   build-cv:
     runs-on: ubuntu-latest
