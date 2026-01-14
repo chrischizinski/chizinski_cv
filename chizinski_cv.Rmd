@@ -33,7 +33,7 @@ library(tidyverse)
 library(epoxy)
 library(icons)
 
-filter_year <- 2020
+filter_year <- 2019
 
 source("R/pull_citations.R")
 source("R/pull_presentations.R")
@@ -80,7 +80,7 @@ jobs_df |>
 
 \newpage 
 
-# `r glue::glue("Grants awarded since {filter_year}")`
+# `r glue::glue("Grants awarded")`
 
 ```{r}
 #| label: grants1
@@ -94,7 +94,7 @@ reduced_amount <- scales::label_dollar()(grants_df |>
 
 ```
 \medskip
-- Grants awarded: `r glue::glue("{lifetime_amount} lifetime and {reduced_amount} since {filter_year}.")`
+- Grants awarded: `r glue::glue("{lifetime_amount} lifetime.")`
 \medskip
 
 ```{r}
@@ -102,7 +102,6 @@ reduced_amount <- scales::label_dollar()(grants_df |>
 #| include: true
 
 grants_df |>
-  filter(year >= filter_year) |>
   mutate(amount = scales::label_dollar()(amount),
          what = glue::glue("{authors}. {title}. {funder}. {amount} [{share}]")) |> 
   brief_entries(what = what,
@@ -187,7 +186,7 @@ undergrad_mentor_df |>
 
 ```
 
-\bigskip
+\newpage
 
 # Publications 
 
@@ -205,13 +204,13 @@ scholar_data <- read_rds(here::here('data', 'scholar.rds'))
 
 \medskip
 
-## `r glue::glue("Peer-reviewed manuscripts since {filter_year}")`
+## `r glue::glue("Peer-reviewed manuscripts")`
 
 ```{r}
 #| label: peerreview_pubs
 #| include: true
 
-bibliography_entries("bib/reduced_chizinski_pubs.bib")
+bibliography_entries("bib/chizinski_pubs.bib")
 ```
 
 ## Books and book chapters
@@ -250,12 +249,12 @@ bibliography_entries("bib/invited_presentations.bib")
 
 \medskip
 
-## `r glue::glue("Contributed presentations since {filter_year}")`
+## `r glue::glue("Contributed presentations")`
 
 ```{r}
 #| label: contributed_presentations
 #| include: true
-bibliography_entries("bib/reduced_contributed_presentations.bib")
+bibliography_entries("bib/contributed_presentations.bib")
 ```
 
 \bigskip
