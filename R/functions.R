@@ -8,13 +8,19 @@ get_current_year <- function(){
 
 create_bibtex_key <- function(authors, title, year){
   require(stringr)
-  require(tm)
-  # requires stringr and tm packages
+
+  # Common English stopwords (avoids tm package dependency)
+  stopwords_en <- c("a", "an", "the", "and", "or", "but", "in", "on", "at", "to",
+                    "for", "of", "with", "by", "from", "as", "is", "was", "are",
+                    "were", "been", "be", "have", "has", "had", "do", "does", "did",
+                    "will", "would", "could", "should", "may", "might", "must",
+                    "that", "which", "who", "whom", "this", "these", "those",
+                    "it", "its", "they", "their", "we", "our", "you", "your")
 
   first_author_name <- str_extract(authors, pattern = "\\S+\\s+(\\S+)\\s+\\S+")
   first_author_name <- str_remove(first_author_name, pattern = "^(\\S+\\s+){2}")
 
-  title_words <- str_remove_all(tolower(title), pattern = paste0('\\b', tm::stopwords('english'), collapse = ' |'))
+  title_words <- str_remove_all(tolower(title), pattern = paste0('\\b', stopwords_en, collapse = ' |'))
   first_title_word <- str_extract(title_words, pattern = "\\b\\w+")
 
   key <- tolower(str_squish(paste0(first_author_name, year, first_title_word)))

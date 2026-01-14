@@ -63,13 +63,9 @@ jobs:
             'glue',
             'epoxy',
             'lubridate',
-            'scales',
-            'remotes'
+            'scales'
           ), repos = 'https://cloud.r-project.org/')
-          remotes::install_github('mitchelloharawild/icons')
         shell: Rscript {0}
-        env:
-          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update citation data
         run: Rscript R/pull_citations.R

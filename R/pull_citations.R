@@ -1,5 +1,5 @@
 require(xfun)
-xfun::pkg_attach2(c("tidyverse", "scholar", "RefManageR", "tm",  "icons"), message = FALSE)
+xfun::pkg_attach2(c("tidyverse", "scholar", "RefManageR"), message = FALSE)
 source(here::here("R", "functions.R"))
 
 id <- 'kAdpcMUAAAAJ'
