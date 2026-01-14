@@ -62,10 +62,11 @@ jobs:
             'RefManageR',
             'glue',
             'epoxy',
-            'icons',
             'lubridate',
-            'scales'
+            'scales',
+            'remotes'
           ), repos = 'https://cloud.r-project.org/')
+          remotes::install_github('mitchelloharawild/icons')
         shell: Rscript {0}
 
       - name: Update citation data
