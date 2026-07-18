@@ -1,11 +1,5 @@
 ## Functions
 
-get_current_year <- function(){
-  Sys.Date() |> 
-        lubridate::ymd() |> 
-        year()
-}
-
 create_bibtex_key <- function(authors, title, year){
   require(stringr)
 
@@ -17,28 +11,24 @@ create_bibtex_key <- function(authors, title, year){
                     "that", "which", "who", "whom", "this", "these", "those",
                     "it", "its", "they", "their", "we", "our", "you", "your")
 
-  first_author_name <- str_extract(authors, pattern = "\\S+\\s+(\\S+)\\s+\\S+")
-  first_author_name <- str_remove(first_author_name, pattern = "^(\\S+\\s+){2}")
+  make_key <- function(a, t, y) {
+    a <- str_squish(a)
+    first_author <- str_split(a, "\\s+and\\s+")[[1]][1]
+    first_author <- str_remove_all(first_author, "[{}]")
+    first_author_name <- str_remove_all(stringr::word(first_author, -1), "[^A-Za-z0-9]")
+    if (is.na(first_author_name) || first_author_name == "") first_author_name <- "unknown"
 
-  title_words <- str_remove_all(tolower(title), pattern = paste0('\\b', stopwords_en, collapse = ' |'))
-  first_title_word <- str_extract(title_words, pattern = "\\b\\w+")
+    title_clean <- str_replace_all(tolower(t), "[^a-z0-9\\s]", " ")
+    title_clean <- str_squish(title_clean)
+    title_clean <- str_remove_all(title_clean, pattern = paste0("\\b(", paste(stopwords_en, collapse = "|"), ")\\b"))
+    title_clean <- str_squish(title_clean)
+    first_title_word <- stringr::word(title_clean, 1)
+    if (is.na(first_title_word) || first_title_word == "") first_title_word <- "untitled"
 
-  key <- tolower(str_squish(paste0(first_author_name, year, first_title_word)))
-  return(key)
+    tolower(str_squish(paste0(first_author_name, y, first_title_word)))
+  }
 
-}
-
-
-separate_number_scholar <- function(number){
-  volume <- str_squish(str_extract(number, pattern =  "([[:digit:]]+)\\s"))
-
-
-  issue <- str_extract(number, pattern = "\\((\\d+)\\),")
-  issue <- str_remove_all(issue, pattern = "\\(|\\)|\\,")
-
-pgs <- str_extract(number, pattern = "\\b(\\d+)-(\\d+)\\b")
-
-paste(volume, issue, pgs, sep = "|")
+  mapply(make_key, authors, title, year, USE.NAMES = FALSE)
 }
 
 
@@ -67,10 +57,14 @@ convert_presentations_to_bibtex <- function(presentations_df,
 
   # Process data
   processed <- presentations_df |>
-    mutate(authors = str_replace_all(authors, c("," = " and", "  " = " ")),
+    mutate(authors = str_replace_all(authors, c("," = " and", "\\s+" = " ")),
+           authors = str_replace(authors, "^and\\s+", ""),
+           authors = str_replace(authors, "\\s+and\\s+and\\s+", " and "),
+           authors = str_replace(authors, "\\s+and\\s*$", ""),
            authors = str_remove_all(authors, c("\\."))) |>
     mutate(key = create_bibtex_key(authors, title, year),
-           meeting = str_glue("{{{meeting}}}, {{{location}}}"))
+           meeting = str_glue("{{{meeting}}}, {{{location}}}")) |>
+    mutate(key = make.unique(key, sep = "-"))
 
   # Apply title case protections if patterns provided
   if (!is.null(state_pattern) && !is.null(state_replace)) {
@@ -116,3 +110,206 @@ convert_presentations_to_bibtex <- function(presentations_df,
   return(nrow(processed))
 }
 
+
+# =============================================================================
+# Custom CV Entry Functions for awesome-cv LaTeX class
+# These replace vitae::detailed_entries() and vitae::brief_entries()
+# which don't work properly with Quarto + custom document classes
+# =============================================================================
+
+#' Escape LaTeX special characters in text
+#' @param text Character string to escape
+#' @return Escaped string safe for LaTeX
+escape_latex <- function(text) {
+  if (is.na(text) || is.null(text)) return("")
+  text <- as.character(text)
+  # Escape special LaTeX characters (order matters: backslash is replaced with a
+  # placeholder first so braces inserted by later replacements aren't re-escaped)
+  text <- gsub("\\", "\007BSLASH\007", text, fixed = TRUE)
+  text <- gsub("{", "\\{", text, fixed = TRUE)
+  text <- gsub("}", "\\}", text, fixed = TRUE)
+  text <- gsub("&", "\\&", text, fixed = TRUE)
+  text <- gsub("%", "\\%", text, fixed = TRUE)
+  text <- gsub("$", "\\$", text, fixed = TRUE)
+  text <- gsub("#", "\\#", text, fixed = TRUE)
+  text <- gsub("_", "\\_", text, fixed = TRUE)
+  text <- gsub("~", "\\textasciitilde{}", text, fixed = TRUE)
+  text <- gsub("^", "\\textasciicircum{}", text, fixed = TRUE)
+  text <- gsub("\007BSLASH\007", "\\textbackslash{}", text, fixed = TRUE)
+  text
+}
+
+#' Create CV entries for awesome-cv class
+#'
+#' Outputs LaTeX cventries environment with cventry commands
+#' @param data Data frame with CV entry information
+#' @param what Column name for title/institution (required)
+#' @param when Column name for date (required)
+#' @param with Column name for position/role (optional)
+#' @param where Column name for location (optional)
+#' @param why Column name or list-column for description items (optional)
+#' @param .protect Logical, whether to escape LaTeX special characters (default TRUE)
+#' @return NULL, outputs LaTeX directly via cat()
+cv_entries <- function(data, what, when, with = NULL, where = NULL, why = NULL, .protect = TRUE) {
+  # Capture column names
+  what_col <- rlang::enquo(what)
+  when_col <- rlang::enquo(when)
+  with_col <- if (!missing(with)) rlang::enquo(with) else NULL
+  where_col <- if (!missing(where)) rlang::enquo(where) else NULL
+  why_col <- if (!missing(why)) rlang::enquo(why) else NULL
+
+  # Build output as character vector - one entry per line
+  entries <- character()
+
+  # Process each row
+  for (i in seq_len(nrow(data))) {
+    row <- data[i, ]
+
+    # Extract values
+    title <- as.character(rlang::eval_tidy(what_col, row))
+    date <- as.character(rlang::eval_tidy(when_col, row))
+    position <- if (!is.null(with_col)) as.character(rlang::eval_tidy(with_col, row)) else ""
+    location <- if (!is.null(where_col)) as.character(rlang::eval_tidy(where_col, row)) else ""
+
+    # Handle description (why) - simplified to single items
+    description <- ""
+    if (!is.null(why_col)) {
+      why_val <- rlang::eval_tidy(why_col, row)
+      if (is.list(why_val)) {
+        why_items <- unlist(why_val)
+        why_items <- why_items[!is.na(why_items) & why_items != ""]
+        if (length(why_items) > 0) {
+          if (.protect) why_items <- sapply(why_items, escape_latex, USE.NAMES = FALSE)
+          description <- paste(why_items, collapse = "; ")
+        }
+      } else if (!is.na(why_val) && why_val != "") {
+        if (.protect) why_val <- escape_latex(why_val)
+        description <- why_val
+      }
+    }
+
+    # Escape LaTeX if needed
+    if (.protect) {
+      title <- escape_latex(title)
+      date <- escape_latex(date)
+      position <- escape_latex(position)
+      location <- escape_latex(location)
+    }
+
+    # Handle NA values
+    title <- ifelse(is.na(title), "", title)
+    date <- ifelse(is.na(date), "", date)
+    position <- ifelse(is.na(position), "", position)
+    location <- ifelse(is.na(location), "", location)
+
+    # Build cventry: {position}{title}{location}{date}{description}
+    entry <- sprintf("\\cventry{%s}{%s}{%s}{%s}{%s}",
+                     position, title, location, date, description)
+    entries <- c(entries, entry)
+  }
+
+  # Combine and output
+  output <- paste0("\\begin{cventries}\n", paste(entries, collapse = "\n"), "\n\\end{cventries}")
+  cat(output)
+  invisible(NULL)
+}
+
+#' Create brief CV entries for awesome-cv class
+#'
+#' Simpler version without position/location for grant-style entries
+#' @param data Data frame with CV entry information
+#' @param what Column name for main content (required)
+#' @param when Column name for date (required)
+#' @param .protect Logical, whether to escape LaTeX special characters (default TRUE)
+#' @return NULL, outputs LaTeX directly via cat()
+cv_brief_entries <- function(data, what, when, .protect = TRUE) {
+  # Capture column names
+  what_col <- rlang::enquo(what)
+  when_col <- rlang::enquo(when)
+
+  # Build entries as character vector
+  entries <- character()
+
+  # Process each row
+  for (i in seq_len(nrow(data))) {
+    row <- data[i, ]
+
+    # Extract values
+    content <- as.character(rlang::eval_tidy(what_col, row))
+    date <- as.character(rlang::eval_tidy(when_col, row))
+
+    # Escape LaTeX if needed
+    if (.protect) {
+      content <- escape_latex(content)
+      date <- escape_latex(date)
+    }
+
+    # Handle NA values
+    content <- ifelse(is.na(content), "", content)
+    date <- ifelse(is.na(date), "", date)
+
+    # Build cventry so the date aligns with the content line
+    entry <- sprintf("\\cventry{%s}{}{}{%s}{}", content, date)
+    entries <- c(entries, entry)
+  }
+
+  # Combine and output
+  output <- paste0("\\begin{cventries}\n", paste(entries, collapse = "\n"), "\n\\end{cventries}")
+  cat(output)
+  invisible(NULL)
+}
+
+#' Create CV honors entries for awesome-cv class
+#'
+#' Uses cvhonors environment for awards/honors
+#' @param data Data frame with honors information
+#' @param what Column name for award name (required)
+#' @param when Column name for year (required)
+#' @param with Column name for description/type (optional)
+#' @param where Column name for institution (optional)
+#' @param .protect Logical, whether to escape LaTeX special characters (default TRUE)
+#' @return NULL, outputs LaTeX directly via cat()
+cv_honors <- function(data, what, when, with = NULL, where = NULL, .protect = TRUE) {
+  # Capture column names
+  what_col <- rlang::enquo(what)
+  when_col <- rlang::enquo(when)
+  with_col <- if (!missing(with)) rlang::enquo(with) else NULL
+  where_col <- if (!missing(where)) rlang::enquo(where) else NULL
+
+  # Build entries as character vector
+  entries <- character()
+
+  # Process each row
+  for (i in seq_len(nrow(data))) {
+    row <- data[i, ]
+
+    # Extract values
+    award <- as.character(rlang::eval_tidy(what_col, row))
+    year <- as.character(rlang::eval_tidy(when_col, row))
+    desc <- if (!is.null(with_col)) as.character(rlang::eval_tidy(with_col, row)) else ""
+    inst <- if (!is.null(where_col)) as.character(rlang::eval_tidy(where_col, row)) else ""
+
+    # Escape LaTeX if needed
+    if (.protect) {
+      award <- escape_latex(award)
+      year <- escape_latex(year)
+      desc <- escape_latex(desc)
+      inst <- escape_latex(inst)
+    }
+
+    # Handle NA values
+    award <- ifelse(is.na(award), "", award)
+    year <- ifelse(is.na(year), "", year)
+    desc <- ifelse(is.na(desc), "", desc)
+    inst <- ifelse(is.na(inst), "", inst)
+
+    # Build cvhonor: {award}{description}{institution}{year}
+    entry <- sprintf("\\cvhonor{%s}{%s}{%s}{%s}", award, desc, inst, year)
+    entries <- c(entries, entry)
+  }
+
+  # Combine and output
+  output <- paste0("\\begin{cvhonors}\n", paste(entries, collapse = "\n"), "\n\\end{cvhonors}")
+  cat(output)
+  invisible(NULL)
+}

@@ -43,14 +43,6 @@ region_replace <- c("Great Plains"="{Great Plains}",
                     "Altamont Pass Wind Resource Area" = "{Altamont Pass Wind Resource Area}",
                     "North America" = "{North America}")
 
-# bib template for glue 
-template <- "@inproceedings{{{key},
-                title = {{{title}},
-                eventtitle = {{{meeting}},
-                author = {{{authors}},
-                year = {{{year}}
-  }}"
-
 # convert contributed to bib  --------------------------------------------------
 
 # Validate contributed presentations file
@@ -85,7 +77,9 @@ lifetime_pres <- convert_presentations_to_bibtex(
 
 
 # reduced contributed presentations ---------------------------------------
-filter_year <- 2019
+if (!exists("filter_year")) {
+  filter_year <- 2020  # keep in sync with params$filter_year in chizinski_cv.qmd
+}
 
 # Generate reduced (since 2019) contributed presentations BibTeX using helper function
 reduced_pres <- convert_presentations_to_bibtex(
@@ -161,4 +155,3 @@ write_rds(pres_data_out,
           here::here('data', 'inv_presentation_numbers.rds'))
 
 message("✓ Presentation processing complete!")
-

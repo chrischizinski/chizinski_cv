@@ -4,37 +4,57 @@ source(here::here("R", "functions.R"))
 
 id <- 'kAdpcMUAAAAJ'
 
-# Intelligent caching: Check if data is recent (< 24 hours old)
+# Intelligent caching: refresh if cached fetch is > cache_hours old.
+# The fetch timestamp is stored INSIDE the RDS (file mtime is unreliable in CI:
+# git checkout resets mtimes, making committed caches always look fresh).
+# Set FORCE_REFRESH=1 in the environment to bypass the cache.
 cache_hours <- 24  # Adjust as needed
 scholar_cache_file <- here::here('data', 'scholar.rds')
 scholar_raw_cache <- here::here('data', 'scholar_raw_cache.rds')
+
+read_raw_cache <- function(path) {
+  if (!file.exists(path)) return(NULL)
+  cached <- readRDS(path)
+  # Backward compatibility: old caches were a bare data.frame with no timestamp
+  if (is.data.frame(cached)) {
+    list(fetched_at = as.POSIXct(0, origin = "1970-01-01"), pubz = cached)
+  } else {
+    cached
+  }
+}
+
+cached <- read_raw_cache(scholar_raw_cache)
+force_refresh <- Sys.getenv("FORCE_REFRESH") == "1"
 use_cache <- FALSE
 
-if (file.exists(scholar_cache_file) && file.exists(scholar_raw_cache)) {
-  cache_age_hours <- as.numeric(difftime(Sys.time(), file.info(scholar_cache_file)$mtime, units = "hours"))
+if (!is.null(cached) && !force_refresh) {
+  cache_age_hours <- as.numeric(difftime(Sys.time(), cached$fetched_at, units = "hours"))
   if (cache_age_hours < cache_hours) {
-    message(sprintf("Using cached Scholar data (%.1f hours old). Set cache_hours to force refresh.", cache_age_hours))
+    message(sprintf("Using cached Scholar data (%.1f hours old). Set FORCE_REFRESH=1 to force refresh.", cache_age_hours))
     use_cache <- TRUE
   } else {
     message(sprintf("Cache is %.1f hours old (>%d hours). Refreshing from Google Scholar...", cache_age_hours, cache_hours))
   }
+} else if (force_refresh) {
+  message("FORCE_REFRESH=1 set. Fetching data from Google Scholar...")
 } else {
   message("No cache found. Fetching data from Google Scholar...")
 }
 
-# Fetch or load publications
-if (use_cache) {
-  pubz <- readRDS(scholar_raw_cache)
+# Fetch or load publications (tryCatch returns the value, so the fallback
+# actually reaches `pubz` -- assignments inside an error handler would not)
+pubz <- if (use_cache) {
+  cached$pubz
 } else {
   tryCatch({
-    pubz <- as.data.frame(RefManageR::ReadGS(scholar.id=id, limit = Inf, sort.by.date = TRUE, check.entries = FALSE))
-    # Cache the raw data
-    saveRDS(pubz, scholar_raw_cache)
-    message(sprintf("Successfully fetched %d publications from Google Scholar", nrow(pubz)))
+    fetched <- as.data.frame(RefManageR::ReadGS(scholar.id = id, limit = Inf, sort.by.date = TRUE, check.entries = FALSE))
+    saveRDS(list(fetched_at = Sys.time(), pubz = fetched), scholar_raw_cache)
+    message(sprintf("Successfully fetched %d publications from Google Scholar", nrow(fetched)))
+    fetched
   }, error = function(e) {
-    if (file.exists(scholar_raw_cache)) {
+    if (!is.null(cached)) {
       warning(sprintf("Google Scholar API failed: %s\nUsing cached data instead.", e$message))
-      pubz <- readRDS(scholar_raw_cache)
+      cached$pubz
     } else {
       stop(sprintf("Google Scholar API failed and no cache available: %s", e$message))
     }
@@ -80,14 +100,17 @@ RefManageR::WriteBib(pubz_bibentry, file = here::here('bib', 'chizinski_pubs.bib
                      verbose = FALSE, bibstyle = "year", keep_all = TRUE)
 
 ## reduced file
-filter_year <- 2019
+if (!exists("filter_year")) {
+  filter_year <- 2020  # keep in sync with params$filter_year in chizinski_cv.qmd
+}
 as.BibEntry(pubz_fixed |> filter(year >= filter_year)) -> pubz_bibentry_filtered
 
 RefManageR::WriteBib(pubz_bibentry_filtered, file = here::here('bib', 'reduced_chizinski_pubs.bib'),
                      verbose = FALSE, bibstyle = "year", keep_all = TRUE)
 
-# scholar data with error handling
-tryCatch({
+# scholar profile metrics with error handling: on failure, keep the existing
+# data/scholar.rds (stale metrics) rather than crashing
+profile_metrics <- tryCatch({
   scholar_data <- get_profile(id)
   book_chapter_ids <- c("inmFHauC9wsC", "nWoA1JPTheMC", "uAPFzskPt0AC")
 
@@ -96,29 +119,32 @@ tryCatch({
     distinct(pubid, .keep_all = TRUE)
 
   message(sprintf("Successfully fetched Scholar profile: %d total publications", nrow(citation_h)))
+  list(scholar_data = scholar_data, citation_h = citation_h)
 }, error = function(e) {
   warning(sprintf("Failed to fetch Scholar profile data: %s", e$message))
-  # If we have cached data, the process can continue with potentially stale metrics
-  if (!file.exists(scholar_cache_file)) {
-    stop("No cached Scholar data available and API call failed.")
-  }
+  NULL
 })
 
-reduced_pubs <- nrow(citation_h |> filter(year >= filter_year))
-lifetime_pubs <- nrow(citation_h)
+if (!is.null(profile_metrics)) {
+  citation_h <- profile_metrics$citation_h
+  scholar_data <- profile_metrics$scholar_data
 
-lifetime_citations <- prettyNum(sum(citation_h$cites), big.mark = ",")
-reduced_citations <- prettyNum(citation_h |> filter(year >= filter_year) |> pull(cites) |> sum(), big.mark = ",")
+  lifetime_pubs <- nrow(citation_h)
+  lifetime_citations <- prettyNum(sum(citation_h$cites), big.mark = ",")
 
+  publications_numbers <- glue::glue("{lifetime_pubs} lifetime.")
+  citation_numbers <- glue::glue("{lifetime_citations} lifetime citations.")
+  hindex_numbers <- glue::glue("{scholar_data$h_index} and {scholar_data$i10_index} i-10 index.")
 
-publications_numbers <- glue::glue("{lifetime_pubs} lifetime.")
-citation_numbers <- glue::glue("{lifetime_citations} lifetime citations.")
-hindex_numbers <- glue::glue("{scholar_data$h_index} and {scholar_data$i10_index} i-10 index.")
+  scholar_data_out <- tibble(info = 1:3,
+                             results = c(publications_numbers, citation_numbers, hindex_numbers))
 
-scholar_data_out <- tibble(info = 1:3,
-                       results = c(publications_numbers,citation_numbers,hindex_numbers))
-
-write_rds(scholar_data_out,
-          here::here('data', 'scholar.rds'))
+  write_rds(scholar_data_out,
+            here::here('data', 'scholar.rds'))
+} else if (file.exists(scholar_cache_file)) {
+  message("Keeping existing data/scholar.rds (metrics may be stale).")
+} else {
+  stop("No cached Scholar metrics available and API call failed.")
+}
 
 message("✓ Citation processing complete!")

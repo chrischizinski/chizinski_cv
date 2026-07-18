@@ -8,3 +8,39 @@
 \let\daleth\relax
 
 \newcommand{\noop}[1]{}
+\newcommand{\studentname}[1]{\textcolor{black}{\large\textbf{#1}}}
+\usepackage{etoolbox}
+\renewcommand{\maketitle}{}
+\renewcommand*{\subsectionstyle}[1]{{\fontsize{12pt}{1em}\bodyfont\bfseries\itshape\textcolor{text}{#1}}}
+\renewcommand{\subsection}[1]{%
+  \vspace{\acvSectionContentTopSkip}%
+  \vspace{-3mm}%
+  \subsectionstyle{#1}%
+  \phantomsection%
+  \vspace{2mm}%
+}
+\DeclareNameFormat{author}{%
+  \ifboolexpr{ test {\ifstrequal{\namepartfamily}{Chizinski}} }
+    {\mkbibbold{\namepartfamily}%
+     \ifblank{\namepartgiven}{}{\addcomma\space\mkbibbold{\namepartgiven}}}
+    {\namepartfamily%
+     \ifblank{\namepartgiven}{}{\addcomma\space\namepartgiven}}%
+  \ifthenelse{\value{listcount}<\value{liststop}}{\addsemicolon\space}{}%
+}
+\renewcommand*{\bibfont}{\fontsize{9pt}{1em}\bodyfontlight\upshape\color{text}}
+\defbibenvironment{bibliography}
+  {\list
+     {}
+     {\setlength{\leftmargin}{\bibhang}%
+      \setlength{\itemindent}{-\bibhang}%
+      \setlength{\labelwidth}{0pt}%
+      \setlength{\labelsep}{0pt}%
+      \setlength{\itemsep}{\bibitemsep}%
+      \setlength{\parsep}{0pt}%
+      \setlength{\topsep}{0pt}%
+      \setlength{\partopsep}{0pt}}}
+  {\endlist}
+  {\item}
+\setlength\bibitemsep{0.6\baselineskip}
+\setlength\bibhang{1.5em}
+\ExecuteBibliographyOptions{sorting=ydnt}

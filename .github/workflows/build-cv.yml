@@ -18,8 +18,18 @@ on:
   # Allow manual trigger
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
-  build-cv:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -30,54 +40,94 @@ jobs:
         uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.5.2'
+          use-public-rspm: true
 
       - name: Setup Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         with:
           version: 'release'
+          tinytex: true
 
-      - name: Install system dependencies
+      - name: Install R packages (cached, binary)
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::tidyverse
+            any::vitae
+            any::here
+            any::scholar
+            any::RefManageR
+            any::glue
+            any::lubridate
+            any::scales
+            any::xfun
+            any::rlang
+
+      # Data scripts are sourced by the .qmd setup chunk itself; the monthly
+      # schedule forces a Scholar refresh regardless of the committed cache.
+      - name: Render CV (PDF + HTML)
+        run: quarto render chizinski_cv.qmd --to all
+        env:
+          FORCE_REFRESH: ${{ github.event_name == 'schedule' && '1' || '' }}
+
+      - name: Assemble site
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libcurl4-openssl-dev \
-            libssl-dev \
-            libxml2-dev \
-            libfontconfig1-dev \
-            libharfbuzz-dev \
-            libfribidi-dev \
-            libfreetype6-dev \
-            libpng-dev \
-            libtiff5-dev \
-            libjpeg-dev
+          mkdir -p _site
+          cp chizinski_cv.html chizinski_cv.pdf _site/
+          cat > _site/index.html << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Christopher Chizinski - CV</title>
+            <style>
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                max-width: 800px;
+                margin: 80px auto;
+                padding: 20px;
+                line-height: 1.6;
+              }
+              h1 { color: #d00000; margin-bottom: 10px; }
+              .subtitle { color: #666; margin-bottom: 40px; }
+              .links { margin: 30px 0; }
+              .links a {
+                display: inline-block;
+                margin-right: 20px;
+                padding: 10px 20px;
+                background: #d00000;
+                color: white;
+                text-decoration: none;
+                border-radius: 5px;
+              }
+              .links a:hover { background: #a00000; }
+              .info { background: #f5f5f5; padding: 20px; border-radius: 5px; margin: 20px 0; }
+              .timestamp { color: #999; font-size: 0.9em; }
+            </style>
+          </head>
+          <body>
+            <h1>Christopher Chizinski</h1>
+            <div class="subtitle">Professor of Human Dimensions<br>
+            University of Nebraska-Lincoln</div>
 
-      - name: Install R packages
-        run: |
-          install.packages(c(
-            'tidyverse',
-            'vitae',
-            'here',
-            'scholar',
-            'RefManageR',
-            'glue',
-            'epoxy',
-            'lubridate',
-            'scales'
-          ), repos = 'https://cloud.r-project.org/')
-        shell: Rscript {0}
+            <div class="links">
+              <a href="chizinski_cv.html">View CV (HTML)</a>
+              <a href="chizinski_cv.pdf" download>Download CV (PDF)</a>
+            </div>
 
-      - name: Update citation data
-        run: Rscript R/pull_citations.R
-        continue-on-error: true  # Continue even if Scholar fails (will use cache)
+            <div class="info">
+              <strong>About this CV</strong><br>
+              This curriculum vitae is automatically generated from structured data and updated monthly.
+              Publications are sourced from Google Scholar, and all data is version-controlled.
+            </div>
 
-      - name: Update presentation data
-        run: Rscript R/pull_presentations.R
-
-      - name: Render CV (PDF)
-        run: quarto render chizinski_cv.qmd --to pdf
-
-      - name: Render CV (HTML)
-        run: quarto render chizinski_cv.qmd --to html
+            <div class="timestamp">
+              Last updated: $(date +"%B %d, %Y at %H:%M UTC")
+            </div>
+          </body>
+          </html>
+          EOF
 
       - name: Upload PDF artifact
         uses: actions/upload-artifact@v4
@@ -86,15 +136,10 @@ jobs:
           path: chizinski_cv.pdf
           retention-days: 90
 
-      - name: Upload HTML artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: cv-html
-          path: chizinski_cv.html
-
-      - name: Create timestamped copy
-        run: |
-          cp chizinski_cv.pdf "chizinski_cv_$(date +%Y-%m-%d).pdf"
+          path: _site
 
       - name: Upload to releases (if tagged)
         uses: softprops/action-gh-release@v2
@@ -105,3 +150,16 @@ jobs:
             chizinski_cv.html
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

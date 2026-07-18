@@ -1,20 +1,44 @@
+local function strongify(inlines)
+    return pandoc.Strong(inlines)
+end
+
+local function match_chizinski(inlines, i)
+    local a = inlines[i]
+    local b = inlines[i + 1]
+    local c = inlines[i + 2]
+    local d = inlines[i + 3]
+    local e = inlines[i + 4]
+
+    if not (a and b and c) then
+        return nil
+    end
+
+    if a.t == "Str" and a.text == "Chizinski," and b.t == "Space" and c.t == "Str" then
+        if c.text == "C.J." or c.text == "CJ" or c.text == "C." or c.text == "C" then
+            if (c.text == "C." or c.text == "C") and d and e and d.t == "Space" and e.t == "Str" and (e.text == "J." or e.text == "J") then
+                return {len = 5, inlines = {a, b, c, d, e}}
+            end
+            return {len = 3, inlines = {a, b, c}}
+        end
+    end
+
+    return nil
+end
+
 function Block(el)
     if el.t == "Para" or el.t == "Plain" then
-        for k, _ in ipairs(el.content) do
-
-            if el.content[k].t == "Str" and el.content[k].text == "Seo," and
-                el.content[k + 1].t == "Space" and el.content[k + 2].t == "Str" and
-                el.content[k + 2].text:find("^J.") then
-
-                local _, e = el.content[k + 2].text:find("^J.")
-                local rest = el.content[k + 2].text:sub(e + 1) -- empty if e+1>length
-                el.content[k] = pandoc.Strong {pandoc.Str("Seo, J.")}
-                el.content[k + 1] = pandoc.Str(rest)
-                table.remove(el.content, k + 2) -- safe? another way would be to set element k+2 to Str("")
-                -- no real need to skip ipairs items here
-
+        local i = 1
+        while i <= #el.content do
+            local match = match_chizinski(el.content, i)
+            if match then
+                el.content[i] = strongify(match.inlines)
+                for _ = 2, match.len do
+                    table.remove(el.content, i + 1)
+                end
+                i = i + 1
+            else
+                i = i + 1
             end
-
         end
     end
     return el

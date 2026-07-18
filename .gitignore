@@ -80,3 +80,6 @@ archive/
 
 # Generated data caches (auto-regenerated)
 data/*.rds
+
+# Rendered HTML (built + deployed by CI)
+chizinski_cv.html

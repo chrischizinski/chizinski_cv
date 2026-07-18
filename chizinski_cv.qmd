@@ -16,7 +16,9 @@ format:
     cite-method: biblatex
     filters:
       - lua/multiple-bibliographies.lua
+      - lua/strong.lua
     include-in-header: preamble.tex
+    include-before-body: header.tex
   html:
     toc: true
     toc-depth: 2
@@ -24,9 +26,9 @@ format:
     embed-resources: true
 name: Christopher
 surname: Chizinski
-position: "Associate Professor of Human Dimensions"
+position: "Professor of Human Dimensions"
 address: "School of Natural Resources, University of Nebraska-Lincoln"
-phone: "+1 402 471 1736"
+phone: "+1 402 472 8136"
 www: humandimensions.unl.edu
 email: "cchizinski2@unl.edu"
 github: chrischizinski
@@ -34,11 +36,14 @@ linkedin: chrischizinski
 date: "`r format(Sys.time(), '%B %Y')`"
 headcolor: d00000
 csl: "csl/apa7-cv-jy-edition.csl"
+params:
+  filter_year: 2020
+title-block: false
 execute:
   echo: false
   warning: false
   message: false
-  cache: true
+  cache: false
 ---
 
 ```{r}
@@ -48,30 +53,51 @@ execute:
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 library(vitae)
 library(tidyverse)
-library(epoxy)
+library(rlang)
 
-filter_year <- 2019
+# Load custom CV formatting functions
+source("R/functions.R")
+
+filter_year <- params$filter_year
 
 source("R/pull_citations.R")
 source("R/pull_presentations.R")
 
 current_year <- lubridate::year(lubridate::ymd(Sys.Date()))
+
+header_lines <- c(
+  "\\name{Christopher}{Chizinski}",
+  "\\position{Professor of Human Dimensions}",
+  "\\address{School of Natural Resources, University of Nebraska-Lincoln}",
+  "\\mobile{402-472-8136}",
+  "\\email{cchizinski2@unl.edu}",
+  "\\homepage{humandimensions.unl.edu}",
+  "\\github{chrischizinski}",
+  "\\linkedin{chrischizinski}",
+  "\\makecvheader",
+  glue::glue("\\makecvfooter{{\\today}}{{Christopher Chizinski~~~\\textbar~~~Curriculum Vitae~~~\\textbar~~~Items since {filter_year}}}{{\\thepage}}")
+)
+
+writeLines(header_lines, "header.tex")
 ```
 
 # Education
 
 ```{r}
 #| label: education
+#| results: asis
 
 education_df <- read_csv(here::here("data", "education.csv")) %>%
-  mutate(why_advisor = ifelse(do_thesis == 1, glue::glue("{str_to_title(num_advisor)}: {advisor}"), NA_character_))
+  mutate(why_advisor = ifelse(do_thesis == 1, glue::glue("{str_to_title(num_advisor)}: {advisor}"), NA_character_),
+         why = purrr::map2(thesis_title, why_advisor, ~c(.x, .y)))
 
-education_df |>
-  detailed_entries(what = institution,
-                   when = year_end,
-                   where = location,
-                   with = degree,
-                   why = c(thesis_title, why_advisor), .protect=TRUE)
+cv_entries(education_df,
+           what = institution,
+           when = year_end,
+           where = location,
+           with = degree,
+           why = why,
+           .protect = FALSE)
 ```
 
 \bigskip
@@ -80,17 +106,18 @@ education_df |>
 
 ```{r}
 #| label: jobs
+#| results: asis
 
-jobs_df <- read_csv(here::here("data", "prof_positions.csv"))
+jobs_df <- read_csv(here::here("data", "prof_positions.csv")) |>
+  mutate(when = glue::glue("{start_year}--{end_year}"))
 
-jobs_df |>
-  detailed_entries(what = institution,
-                   when = glue::glue("{start_year}--{end_year}"),
-                   with = role,
-                   where = location)
+cv_entries(jobs_df,
+           what = institution,
+           when = when,
+           with = role,
+           where = location,
+           .protect = FALSE)
 ```
-
-\newpage
 
 # `r glue::glue("Grants awarded")`
 
@@ -99,28 +126,72 @@ jobs_df |>
 
 grants_df <- read_csv(here::here("data", "grants.csv"))
 
-lifetime_amount <- scales::label_dollar()(sum(grants_df$amount))
-reduced_amount <- scales::label_dollar()(grants_df |>
-  filter(year >= filter_year) |> pull(amount) |> sum())
+lifetime_amount <- gsub("\\$", "\\\\$", scales::label_dollar()(sum(grants_df$amount)))
+reduced_amount <- gsub("\\$", "\\\\$", scales::label_dollar()(grants_df |>
+  filter(year >= filter_year) |> pull(amount) |> sum()))
 ```
 
 \medskip
 - Grants awarded: `r glue::glue("{lifetime_amount} lifetime.")`
 \medskip
+\begingroup
+\renewcommand*{\entrytitlestyle}[1]{{\fontsize{9pt}{1em}\bodyfontlight\upshape\color{black} #1}}
+\renewcommand*{\entrypositionstyle}[1]{{\fontsize{9.5pt}{1em}\bodyfont\scshape\color{graytext} #1}}
+\renewenvironment{cventries}{%
+  \vspace{\acvSectionContentTopSkip}
+  \begin{flushleft}
+}{%
+  \end{flushleft}
+}
 
 ```{r}
 #| label: grants2
+#| results: asis
 
-grants_df |>
+name_pattern <- "(Chizinski,\\s*C\\.?\\s*J\\.?|Chizinski,\\s*C\\.?J\\.?|Chizinski,\\s*C\\.?|Chizinski,\\s*CJ|C\\.?\\s*J\\.?\\s*Chizinski|C\\.?\\s*Chizinski|CJ\\s*Chizinski|Christopher\\s*Chizinski)"
+
+grants_recent_df <- grants_df |>
+  filter(year >= filter_year)
+
+grants_recent_df |>
   mutate(amount = scales::label_dollar()(amount),
-         what = glue::glue("{authors}. {title}. {funder}. {amount} [{share}]")) |>
-  brief_entries(what = what,
-                   when = year)
+         amount = gsub("\\$", "\\\\$", amount),  # Escape $ for LaTeX
+         share = gsub("%", "\\\\%", share),  # Escape % for LaTeX
+         authors = str_replace_all(authors, regex(name_pattern), "\\\\textbf{\\1}"),
+         main = title,
+         why = purrr::pmap(list(authors, funder, amount, share), ~c(..1, ..2, glue::glue("{..3} [{..4}]"), "\\vspace{2mm}"))) |>
+  cv_entries(what = "",
+             with = main,
+             when = year,
+             why = why,
+             .protect = FALSE)
 ```
+\endgroup
 
 \bigskip
 
 # Student mentorship and advising
+
+```{=latex}
+\begingroup
+\renewenvironment{cventries}{%
+  \vspace{\acvSectionContentTopSkip}
+  \begin{flushleft}
+}{%
+  \end{flushleft}
+}
+\renewcommand*{\cventry}[5]{%
+  \hspace*{5mm}%
+  \setlength\tabcolsep{0pt}%
+  \setlength{\extrarowheight}{0pt}%
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}} L{\textwidth - 4.5cm} R{4.5cm}}%
+    \ifempty{#2#3}{\entrypositionstyle{#1} & \entrydatestyle{#4} \\}%
+      {\entrytitlestyle{#2} & \entrylocationstyle{#3} \\%
+      \entrypositionstyle{#1} & \entrydatestyle{#4} \\}%
+    \multicolumn{2}{L{\textwidth}}{\descriptionstyle{#5}}%
+  \end{tabular*}%
+}
+```
 
 ```{r}
 #| label: students_load
@@ -144,19 +215,30 @@ state_replace <- c("nebraska" = "Nebraska",
 
 ```{r}
 #| label: students_advise
+#| results: asis
 
 grad_students_df |>
   arrange(desc(start)) |>
   filter(!is.na(name)) |>
+  filter(start >= filter_year) |>
   mutate(project = str_to_sentence(project),
           project = case_when(grepl(state_pattern, project,
                                  ignore.case = TRUE) ~str_replace_all(project, state_replace),
                               .default = project),
-         what = glue::glue("{name}. [{position}]. {project}. {place}"),
-         what = ifelse(!is.na(details), glue::glue("{what}. [{details}]"), what),
+         title = "",
+         with = glue::glue("\\studentname{{{name}}}"),
+         when = glue::glue("{start}--{end}"),
+         why = purrr::map(purrr::pmap(list(position, project, place, details), ~c(..1, ..2, ..3, ..4)), ~{
+           items <- .x
+           items <- items[!is.na(items) & items != ""]
+           c(items, "\\vspace{2mm}")
+         })
         ) |>
-  detailed_entries(what = what,
-                   when = glue::glue("{start}--{end}"))
+  cv_entries(what = title,
+             with = with,
+             when = when,
+             why = why,
+             .protect = FALSE)
 ```
 
 \medskip
@@ -164,17 +246,29 @@ grad_students_df |>
 
 ```{r}
 #| label: students_committee
+#| results: asis
 
 grad_committees_df |>
   arrange(desc(year)) |>
   filter(!is.na(name)) |>
+  filter(year >= filter_year) |>
   mutate(project = str_to_sentence(project),
           project = case_when(grepl(state_pattern, project,
                                  ignore.case = TRUE) ~str_replace_all(project, state_replace),
                               .default = project),
-         what = glue::glue("{name}. [{position}]. {project}. {place}")) |>
-  detailed_entries(what = what,
-                   when = glue::glue("{year}"))
+         title = "",
+         with = glue::glue("\\studentname{{{name}}}"),
+         when = as.character(year),
+         why = purrr::map(purrr::pmap(list(position, project, place, details), ~c(..1, ..2, ..3, ..4)), ~{
+           items <- .x
+           items <- items[!is.na(items) & items != ""]
+           c(items, "\\vspace{2mm}")
+         })) |>
+  cv_entries(what = title,
+             with = with,
+             when = when,
+             why = why,
+             .protect = FALSE)
 ```
 
 \medskip
@@ -182,16 +276,30 @@ grad_committees_df |>
 
 ```{r}
 #| label: undergrad
+#| results: asis
 
 undergrad_mentor_df |>
   arrange(desc(year)) |>
   filter(!is.na(name)) |>
-  mutate(what = glue::glue("{name}. {title}. [{project}]")) |>
-  detailed_entries(what = what,
-                   when = glue::glue("{year}"))
+  filter(year >= filter_year) |>
+  mutate(title = "",
+         with = glue::glue("\\studentname{{{name}}}"),
+         when = as.character(year),
+         why = purrr::map(purrr::pmap(list(title, project), ~c(..1, glue::glue("[{..2}]"))), ~{
+           items <- .x
+           items <- items[!is.na(items) & items != ""]
+           c(items, "\\vspace{2mm}")
+         })) |>
+  cv_entries(what = title,
+             with = with,
+             when = when,
+             why = why,
+             .protect = FALSE)
 ```
 
-\newpage
+```{=latex}
+\endgroup
+```
 
 # Publications
 
@@ -212,16 +320,26 @@ scholar_data <- read_rds(here::here('data', 'scholar.rds'))
 
 ```{r}
 #| label: peerreview_pubs
+#| results: asis
 
-bibliography_entries("bib/chizinski_pubs.bib")
+if (knitr::is_latex_output()) {
+  cat("\\begin{refsection}[bib/reduced_chizinski_pubs.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
+} else {
+  bibliography_entries("bib/reduced_chizinski_pubs.bib")
+}
 ```
 
 ## Books and book chapters
 
 ```{r}
 #| label: chapter_pubs
+#| results: asis
 
-bibliography_entries("bib/book_chapters.bib")
+if (knitr::is_latex_output()) {
+  cat("\\begin{refsection}[bib/book_chapters.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
+} else {
+  bibliography_entries("bib/book_chapters.bib")
+}
 ```
 
 \bigskip
@@ -242,8 +360,13 @@ presentation_data <- read_rds(here::here('data', 'presentation_numbers.rds'))
 
 ```{r}
 #| label: invited_presentations
+#| results: asis
 
-bibliography_entries("bib/invited_presentations.bib")
+if (knitr::is_latex_output()) {
+  cat("\\begin{refsection}[bib/invited_presentations_reduced.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
+} else {
+  bibliography_entries("bib/invited_presentations_reduced.bib")
+}
 ```
 
 \medskip
@@ -252,8 +375,13 @@ bibliography_entries("bib/invited_presentations.bib")
 
 ```{r}
 #| label: contributed_presentations
+#| results: asis
 
-bibliography_entries("bib/contributed_presentations.bib")
+if (knitr::is_latex_output()) {
+  cat("\\begin{refsection}[bib/reduced_contributed_presentations.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
+} else {
+  bibliography_entries("bib/reduced_contributed_presentations.bib")
+}
 ```
 
 \bigskip
@@ -262,14 +390,22 @@ bibliography_entries("bib/contributed_presentations.bib")
 
 ```{r}
 #| label: honors
+#| results: asis
 
 honors_data <- read_csv(here::here('data', 'honors_awards.csv'))
 
 honors_data |>
   arrange(desc(when)) |>
-  detailed_entries(what = where,
-                with = what,
-                when = when)
+  filter(when >= filter_year) |>
+  mutate(when = as.character(when),
+         title = what,
+         with = "",
+         why = purrr::map(where, ~c(.x, "\\vspace{2mm}"))) |>
+  cv_entries(what = title,
+             with = with,
+             when = when,
+             why = why,
+             .protect = FALSE)
 ```
 
 \bigskip
@@ -279,6 +415,7 @@ honors_data |>
 
 ```{r}
 #| label: classes
+#| results: asis
 
 courses_data <- read_csv(here::here('data', 'classes_taught.csv'))
 
@@ -293,11 +430,18 @@ courses_data |>
   ungroup() |>
   left_join(courses_data |> select(class_number:description),
             join_by("class_number","class_title")) |>
-  detailed_entries(what = glue::glue("{class_title} ({class_number})"),
-                when = glue::glue("{when_taught} semesters"),
-                why = c(glue::glue("Last year taught: {last_year_taught}"),
-                        glue::glue("Enrollment last taught: {enrollment_last_taught}"),
-                        glue::glue("Description: {description}")))
+  filter(last_year_taught >= filter_year) |>
+  mutate(what = glue::glue("{class_title} ({class_number})"),
+         when = glue::glue("{when_taught} semesters"),
+         why = purrr::pmap(list(last_year_taught, enrollment_last_taught, description),
+                           ~c(glue::glue("Last year taught: {..1}"),
+                              glue::glue("Enrollment last taught: {..2}"),
+                              glue::glue("Description: {..3}"),
+                              "\\vspace{2mm}"))) |>
+  cv_entries(what = what,
+             when = when,
+             why = why,
+             .protect = FALSE)
 ```
 
 ## Other courses taught
@@ -315,16 +459,22 @@ courses_data |>
 
 ```{r}
 #| label: workshops
+#| results: asis
 
 workshops_data <- read_csv(here::here('data', 'workshops_other_training.csv'))
 
 workshops_data |>
   arrange(desc(year)) |>
+  filter(year >= filter_year) |>
   mutate(title = str_trim(title),
-         tile = str_to_title(title)) |>
-  detailed_entries(what = glue::glue("{title} [{role}]. {location}"),
-                   when = glue::glue("{date}"),
-                   why = details)
+         title = str_to_title(title),
+         what = glue::glue("{title} [{role}]. {location}"),
+         when = as.character(date),
+         why = purrr::map(details, ~c(.x, "\\vspace{2mm}"))) |>
+  cv_entries(what = what,
+             when = when,
+             why = why,
+             .protect = FALSE)
 ```
 
 # Service
@@ -335,14 +485,20 @@ workshops_data |>
 
 ```{r}
 #| label: editorial
+#| results: asis
 
 journal_data <- read_csv(here::here('data', 'journal_service.csv'))
 
 journal_data |>
   arrange(desc(end)) |>
-  detailed_entries(what = journal,
-                   with = glue::glue("{role}"),
-                   when = glue::glue("{start}--{end}"))
+  mutate(end_year = suppressWarnings(as.numeric(str_remove_all(end, "[^0-9]"))),
+         end_year = ifelse(is.na(end_year), current_year, end_year),
+         when = glue::glue("{start}--{end}")) |>
+  filter(end_year >= filter_year) |>
+  cv_entries(what = journal,
+             with = role,
+             when = when,
+             .protect = FALSE)
 ```
 
 \medskip
@@ -365,14 +521,18 @@ journals_reviewed <- sort(unique(journals_reviewed))
 
 ```{r}
 #| label: external_review
+#| results: asis
 
 external_data <- read_csv(here::here('data', 'external_review.csv'))
 
 external_data |>
   arrange(desc(year)) |>
-  detailed_entries(what = with,
-                   with = role,
-                   when = year)
+  filter(year >= filter_year) |>
+  mutate(when = as.character(year)) |>
+  cv_entries(what = with,
+             with = role,
+             when = when,
+             .protect = FALSE)
 ```
 
 \medskip
@@ -381,6 +541,7 @@ external_data |>
 
 ```{r}
 #| label: university_service
+#| results: asis
 
 univ_service_data <- read_csv(here::here('data', 'university_service.csv'))
 
@@ -390,7 +551,10 @@ univ_service_data |>
          order = ifelse(is.na(order), current_year, order),
          when = ifelse(!is.na(start), glue::glue("{start}--{end}"), end)) |>
   arrange(desc(order)) |>
-  detailed_entries(what = with,
-                   with = role,
-                   when = when)
+  filter(order >= filter_year) |>
+  ungroup() |>
+  cv_entries(what = with,
+             with = role,
+             when = when,
+             .protect = FALSE)
 ```
