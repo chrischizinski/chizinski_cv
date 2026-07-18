@@ -48,6 +48,8 @@ pubz <- if (use_cache) {
 } else {
   tryCatch({
     fetched <- as.data.frame(RefManageR::ReadGS(scholar.id = id, limit = Inf, sort.by.date = TRUE, check.entries = FALSE))
+    # A blocked/captcha'd request can "succeed" with zero entries; treat as failure
+    if (nrow(fetched) == 0) stop("Google Scholar returned 0 publications (likely blocked or captcha)")
     saveRDS(list(fetched_at = Sys.time(), pubz = fetched), scholar_raw_cache)
     message(sprintf("Successfully fetched %d publications from Google Scholar", nrow(fetched)))
     fetched

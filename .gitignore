@@ -80,6 +80,9 @@ archive/
 
 # Generated data caches (auto-regenerated)
 data/*.rds
+# CI fallback when Google Scholar blocks the runner (fetch timestamp lives
+# inside the RDS, so a stale checkout mtime doesn't matter)
+!data/scholar_raw_cache.rds
 
 # Rendered HTML (built + deployed by CI)
 chizinski_cv.html
