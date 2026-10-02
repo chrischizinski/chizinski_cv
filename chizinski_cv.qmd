@@ -13,9 +13,7 @@ format:
     documentclass: awesome-cv
     keep-tex: true
     pdf-engine: xelatex
-    cite-method: biblatex
     filters:
-      - lua/multiple-bibliographies.lua
       - lua/strong.lua
     include-in-header: preamble.tex
     include-before-body: header.tex
@@ -23,6 +21,7 @@ format:
     toc: true
     toc-depth: 2
     theme: cosmo
+    css: cv.css
     embed-resources: true
 name: Christopher
 surname: Chizinski
@@ -202,12 +201,18 @@ grad_committees_df <- read_csv(here::here("data", "grad_committe_service.csv"))
 
 undergrad_mentor_df <- read_csv(here::here("data", "undergrad_mentor.csv"))
 
-state_pattern <- c("South Dakota|Nebraska|North Platte")
+state_pattern <- c("South Dakota|Nebraska|North Platte|Kansas River|North Central United States|Ducks Unlimited|Great Plains|Asian|California")
 
 state_replace <- c("nebraska" = "Nebraska",
                    "south dakota" = "South Dakota",
                    "united states" = "United States",
-                   "north platte" = "North Platte")
+                   "north platte" = "North Platte",
+                   "kansas river" = "Kansas River",
+                   "north central united states" = "North Central United States",
+                   "ducks unlimited" = "Ducks Unlimited",
+                   "great plains" = "Great Plains",
+                   "asian" = "Asian",
+                   "california" = "California")
 ```
 
 \medskip
@@ -322,11 +327,7 @@ scholar_data <- read_rds(here::here('data', 'scholar.rds'))
 #| label: peerreview_pubs
 #| results: asis
 
-if (knitr::is_latex_output()) {
-  cat("\\begin{refsection}[bib/reduced_chizinski_pubs.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
-} else {
-  bibliography_entries("bib/reduced_chizinski_pubs.bib")
-}
+cv_bibliography("bib/reduced_chizinski_pubs.bib")
 ```
 
 ## Books and book chapters
@@ -335,11 +336,7 @@ if (knitr::is_latex_output()) {
 #| label: chapter_pubs
 #| results: asis
 
-if (knitr::is_latex_output()) {
-  cat("\\begin{refsection}[bib/book_chapters.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
-} else {
-  bibliography_entries("bib/book_chapters.bib")
-}
+cv_bibliography("bib/book_chapters.bib")
 ```
 
 \bigskip
@@ -362,11 +359,7 @@ presentation_data <- read_rds(here::here('data', 'presentation_numbers.rds'))
 #| label: invited_presentations
 #| results: asis
 
-if (knitr::is_latex_output()) {
-  cat("\\begin{refsection}[bib/invited_presentations_reduced.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
-} else {
-  bibliography_entries("bib/invited_presentations_reduced.bib")
-}
+cv_bibliography("bib/invited_presentations_reduced.bib")
 ```
 
 \medskip
@@ -377,11 +370,7 @@ if (knitr::is_latex_output()) {
 #| label: contributed_presentations
 #| results: asis
 
-if (knitr::is_latex_output()) {
-  cat("\\begin{refsection}[bib/reduced_contributed_presentations.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
-} else {
-  bibliography_entries("bib/reduced_contributed_presentations.bib")
-}
+cv_bibliography("bib/reduced_contributed_presentations.bib")
 ```
 
 \bigskip
