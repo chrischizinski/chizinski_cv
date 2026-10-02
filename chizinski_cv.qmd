@@ -23,6 +23,7 @@ format:
     toc: true
     toc-depth: 2
     theme: cosmo
+    css: cv.css
     embed-resources: true
 name: Christopher
 surname: Chizinski
@@ -322,11 +323,7 @@ scholar_data <- read_rds(here::here('data', 'scholar.rds'))
 #| label: peerreview_pubs
 #| results: asis
 
-if (knitr::is_latex_output()) {
-  cat("\\begin{refsection}[bib/reduced_chizinski_pubs.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
-} else {
-  bibliography_entries("bib/reduced_chizinski_pubs.bib")
-}
+cv_bibliography("bib/reduced_chizinski_pubs.bib")
 ```
 
 ## Books and book chapters
@@ -335,11 +332,7 @@ if (knitr::is_latex_output()) {
 #| label: chapter_pubs
 #| results: asis
 
-if (knitr::is_latex_output()) {
-  cat("\\begin{refsection}[bib/book_chapters.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
-} else {
-  bibliography_entries("bib/book_chapters.bib")
-}
+cv_bibliography("bib/book_chapters.bib")
 ```
 
 \bigskip
@@ -362,11 +355,7 @@ presentation_data <- read_rds(here::here('data', 'presentation_numbers.rds'))
 #| label: invited_presentations
 #| results: asis
 
-if (knitr::is_latex_output()) {
-  cat("\\begin{refsection}[bib/invited_presentations_reduced.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
-} else {
-  bibliography_entries("bib/invited_presentations_reduced.bib")
-}
+cv_bibliography("bib/invited_presentations_reduced.bib")
 ```
 
 \medskip
@@ -377,11 +366,7 @@ if (knitr::is_latex_output()) {
 #| label: contributed_presentations
 #| results: asis
 
-if (knitr::is_latex_output()) {
-  cat("\\begin{refsection}[bib/reduced_contributed_presentations.bib]\n\\nocite{*}\n\\printbibliography[heading=none,sorting=ydnt]\n\\end{refsection}\n")
-} else {
-  bibliography_entries("bib/reduced_contributed_presentations.bib")
-}
+cv_bibliography("bib/reduced_contributed_presentations.bib")
 ```
 
 \bigskip

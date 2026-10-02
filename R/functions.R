@@ -139,6 +139,77 @@ escape_latex <- function(text) {
   text
 }
 
+#' Convert the LaTeX fragments used in CV data to HTML
+#'
+#' The CV data and chunk code embed LaTeX (\textbf, \studentname, \vspace,
+#' escaped $ % &) for the PDF build. HTML output needs the same text rendered
+#' without the LaTeX, so this escapes HTML first and then maps the macros.
+#' @param x Character vector
+#' @return Character vector of HTML
+latex_to_html <- function(x) {
+  x <- as.character(x)
+  x <- gsub("&", "&amp;", x, fixed = TRUE)
+  x <- gsub("<", "&lt;", x, fixed = TRUE)
+  x <- gsub(">", "&gt;", x, fixed = TRUE)
+  x <- gsub("\\\\vspace\\*?\\{[^}]*\\}", "", x)
+  x <- gsub("\\\\(textbf|textit|emph)\\{([^}]*)\\}", "<strong>\\2</strong>", x)
+  x <- gsub("\\\\studentname\\{([^}]*)\\}", "<strong>\\1</strong>", x)
+  x <- gsub("\\\\([$%#_{}])", "\\1", x)
+  x <- gsub("\\\\&amp;", "&amp;", x)
+  x <- gsub("--", "&ndash;", x, fixed = TRUE)
+  trimws(x)
+}
+
+#' Bibliography for one .bib file, same style in PDF and HTML
+#'
+#' Runs pandoc's citeproc on every entry in the .bib with the CV CSL (which
+#' sorts newest first), so both formats share one citation style, and bolds
+#' the CV owner's name. LaTeX output relies on the CSLReferences environment
+#' defined in preamble.tex.
+#' @param bib_file Path to a .bib file
+#' @param csl Path to the CSL style
+#' @return NULL, outputs a raw block (LaTeX or HTML) via cat()
+cv_bibliography <- function(bib_file, csl = "csl/apa7-cv-jy-edition.csl") {
+  latex_out <- knitr::is_latex_output()
+
+  md <- tempfile(fileext = ".md")
+  bib <- tempfile(fileext = ".bib")
+  on.exit(unlink(c(md, bib)))
+  writeLines(c("---", "nocite: '@*'", "link-citations: false", "---"), md)
+
+  # Pandoc's BibLaTeX reader sentence-cases titles (lowercasing proper nouns,
+  # e.g. "Nebraska") and splits institution/publisher on " and ". Double
+  # braces keep those fields verbatim, as the old biblatex output did.
+  bib_lines <- readLines(here::here(bib_file), warn = FALSE)
+  protect <- "^(\\s*(?:title|institution|publisher|organization)\\s*=\\s*)\\{(.*)\\}(,?)\\s*$"
+  writeLines(sub(protect, "\\1{{\\2}}\\3", bib_lines, perl = TRUE), bib)
+
+  out <- system2(
+    "quarto",
+    c("pandoc", shQuote(md), "--citeproc",
+      "--bibliography", shQuote(bib),
+      "--csl", shQuote(here::here(csl)),
+      "-t", if (latex_out) "latex" else "html", "--wrap=none"),
+    stdout = TRUE
+  )
+  if (!is.null(attr(out, "status")) && attr(out, "status") != 0) {
+    stop("pandoc citeproc failed for ", bib_file)
+  }
+
+  out <- paste(out, collapse = "\n")
+  sp <- "(?:\\s|&nbsp;| |~)*"
+  name <- paste0("(Chizinski,", sp, "C\\.", "(?:", sp, "J\\.)?)")
+  out <- gsub(name, if (latex_out) "\\\\textbf{\\1}" else "<strong>\\1</strong>",
+              out, perl = TRUE)
+
+  # Quarto relocates any <div id="refs"> to the end of the document; four
+  # bibliographies share that id, so drop it to keep each list in place.
+  if (!latex_out) out <- sub('<div id="refs"', "<div", out, fixed = TRUE)
+
+  cat("```{=", if (latex_out) "latex" else "html", "}\n", out, "\n```\n", sep = "")
+  invisible(NULL)
+}
+
 #' Create CV entries for awesome-cv class
 #'
 #' Outputs LaTeX cventries environment with cventry commands
@@ -158,6 +229,8 @@ cv_entries <- function(data, what, when, with = NULL, where = NULL, why = NULL, 
   where_col <- if (!missing(where)) rlang::enquo(where) else NULL
   why_col <- if (!missing(why)) rlang::enquo(why) else NULL
 
+  html_out <- knitr::is_html_output()
+
   # Build output as character vector - one entry per line
   entries <- character()
 
@@ -173,19 +246,48 @@ cv_entries <- function(data, what, when, with = NULL, where = NULL, why = NULL, 
 
     # Handle description (why) - simplified to single items
     description <- ""
+    description_items <- character()
     if (!is.null(why_col)) {
       why_val <- rlang::eval_tidy(why_col, row)
       if (is.list(why_val)) {
         why_items <- unlist(why_val)
         why_items <- why_items[!is.na(why_items) & why_items != ""]
         if (length(why_items) > 0) {
+          description_items <- why_items
           if (.protect) why_items <- sapply(why_items, escape_latex, USE.NAMES = FALSE)
           description <- paste(why_items, collapse = "; ")
         }
       } else if (!is.na(why_val) && why_val != "") {
+        description_items <- why_val
         if (.protect) why_val <- escape_latex(why_val)
         description <- why_val
       }
+    }
+
+    if (html_out) {
+      # HTML twin of \cventry: title | location on the first row,
+      # position | date on the second, description below
+      title <- latex_to_html(ifelse(is.na(title), "", title))
+      date <- latex_to_html(ifelse(is.na(date), "", date))
+      position <- latex_to_html(ifelse(is.na(position), "", position))
+      location <- latex_to_html(ifelse(is.na(location), "", location))
+      items <- latex_to_html(description_items)
+      description <- paste(items[items != ""], collapse = "; ")
+
+      row_html <- function(left, right, left_class, right_class) {
+        if (left == "" && right == "") return("")
+        sprintf('<div class="cv-row"><span class="%s">%s</span><span class="%s">%s</span></div>',
+                left_class, left, right_class, right)
+      }
+      entry <- paste0(
+        '<div class="cv-entry">',
+        row_html(title, location, "cv-title", "cv-location"),
+        row_html(position, date, "cv-position", "cv-date"),
+        if (description != "") sprintf('<div class="cv-desc">%s</div>', description) else "",
+        "</div>"
+      )
+      entries <- c(entries, entry)
+      next
     }
 
     # Escape LaTeX if needed
@@ -206,6 +308,12 @@ cv_entries <- function(data, what, when, with = NULL, where = NULL, why = NULL, 
     entry <- sprintf("\\cventry{%s}{%s}{%s}{%s}{%s}",
                      position, title, location, date, description)
     entries <- c(entries, entry)
+  }
+
+  if (html_out) {
+    cat("```{=html}\n", '<div class="cv-entries">', paste(entries, collapse = "\n"),
+        "</div>\n```\n", sep = "")
+    return(invisible(NULL))
   }
 
   # Combine and output

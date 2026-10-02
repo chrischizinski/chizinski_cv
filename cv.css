@@ -1,0 +1,15 @@
+/* HTML-only styling for cv_entries() / html_bibliography() output.
+   The PDF uses awesome-cv; this is the web twin of \cventry. */
+.cv-entry { margin: 0.6em 0 0.9em; }
+.cv-row { display: flex; justify-content: space-between; gap: 1em; }
+.cv-title { font-weight: 600; }
+.cv-position { font-variant: small-caps; color: #555; }
+.cv-location, .cv-date { text-align: right; white-space: nowrap; color: #555; }
+.cv-desc { margin-top: 0.15em; font-size: 0.95em; }
+
+.references .csl-entry { margin: 0 0 0.6em 1.5em; text-indent: -1.5em; }
+
+@media (max-width: 576px) {
+  .cv-row { flex-direction: column; gap: 0; }
+  .cv-location, .cv-date { text-align: left; white-space: normal; }
+}

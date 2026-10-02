@@ -72,8 +72,14 @@ _freeze/
 # Logs
 logs/
 
-# Claude context
+# AI assistant context, handoffs and tool indexes
 .claude/
+.ai/
+.agents/
+.codex/
+.serena/
+.codegraph/
+graphify-out/
 
 # Archive folder (old CV versions)
 archive/
