@@ -90,5 +90,6 @@ data/*.rds
 # inside the RDS, so a stale checkout mtime doesn't matter)
 !data/scholar_raw_cache.rds
 
-# Rendered HTML (built + deployed by CI)
+# Rendered outputs (built + deployed by CI)
 chizinski_cv.html
+chizinski_cv.pdf
