@@ -25,6 +25,9 @@ read_raw_cache <- function(path) {
 
 cached <- read_raw_cache(scholar_raw_cache)
 force_refresh <- Sys.getenv("FORCE_REFRESH") == "1"
+# `just refresh-scholar` sets REQUIRE_FRESH=1 so a blocked Scholar fails loudly
+# instead of quietly falling back to the committed cache.
+require_fresh <- Sys.getenv("REQUIRE_FRESH") == "1"
 use_cache <- FALSE
 
 if (!is.null(cached) && !force_refresh) {
@@ -54,6 +57,7 @@ pubz <- if (use_cache) {
     message(sprintf("Successfully fetched %d publications from Google Scholar", nrow(fetched)))
     fetched
   }, error = function(e) {
+    if (require_fresh) stop(sprintf("REQUIRE_FRESH=1 and Google Scholar failed: %s", e$message))
     if (!is.null(cached)) {
       warning(sprintf("Google Scholar API failed: %s\nUsing cached data instead.", e$message))
       cached$pubz
@@ -123,6 +127,7 @@ profile_metrics <- tryCatch({
   message(sprintf("Successfully fetched Scholar profile: %d total publications", nrow(citation_h)))
   list(scholar_data = scholar_data, citation_h = citation_h)
 }, error = function(e) {
+  if (require_fresh) stop(sprintf("REQUIRE_FRESH=1 and Scholar profile fetch failed: %s", e$message))
   warning(sprintf("Failed to fetch Scholar profile data: %s", e$message))
   NULL
 })

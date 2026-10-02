@@ -70,6 +70,13 @@ jobs:
         env:
           FORCE_REFRESH: ${{ github.event_name == 'schedule' && '1' || '' }}
 
+      # Google Scholar returns 403 to GitHub runners, so CI normally builds from
+      # the committed cache. Refresh it with `just refresh-scholar` (runs monthly
+      # on the maintainer's machine); this warns if that has not happened.
+      - name: Flag stale Scholar data
+        run: |
+          Rscript -e 'x <- readRDS("data/scholar_raw_cache.rds"); age <- as.numeric(difftime(Sys.time(), x$fetched_at, units = "days")); if (age > 40) cat(sprintf("::warning title=Scholar data is stale::Scholar metrics and publication list are %.0f days old (CI cannot reach Google Scholar). Run just refresh-scholar locally and commit.\n", age)) else cat(sprintf("Scholar data is %.1f days old\n", age))'
+
       - name: Assemble site
         run: |
           mkdir -p _site
